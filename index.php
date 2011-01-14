@@ -39,6 +39,7 @@ font-size:12px;
 # All the hard work is done in here. 
 require 'inc.php';
 
+$services_dt=0;
 ?>
 <CENTER>
 
@@ -67,7 +68,7 @@ require 'inc.php';
 <?
 	if(is_array($hlist)) 
 	foreach (array_keys($hlist) as $hkey) {
-	
+		$downtime="";	
 		// Print the number of hosts in the different states
 		if (isset($hlist[$hkey]["host"]["status"])) {
 			if ($hlist[$hkey]["host"]["status"] == "0") {  $hlist[$hkey]["host"]["status"] = "UP"; } 
@@ -88,18 +89,29 @@ require 'inc.php';
 				$ackhosts++;
 				$listofacked[] .= $hlist[$hkey]["host"]["host_name"];
 			}
-
+			
+			// Also downtimed hosts take up way too much room. Give them a seperate line. 
+			if ($hlist[$hkey]["host"]["scheduled_downtime_depth"] >0) 
+			{
+				$downtimedhosts++;
+				$listofdt[] .= $hlist[$hkey]["host"]["host_name"];
+			}			
 
 		// Now the mess begins. 
-		if( $hlist[$hkey]["host"]["status"] != "UP" && $hlist[$hkey]["host"]["status"] != "PENDING" && $hlist[$hkey]["host"]["status"] != "BLOCK" && $hlist[$hkey]["host"]["problem_has_been_acknowledged"] != "1") {
+		if( $hlist[$hkey]["host"]["status"] != "UP" && $hlist[$hkey]["host"]["status"] != "PENDING" && $hlist[$hkey]["host"]["status"] != "BLOCK" && $hlist[$hkey]["host"]["problem_has_been_acknowledged"] != "1" && $hlist[$hkey]["host"]["scheduled_downtime_depth"] < 1) {
+			if ($hlist[$hkey]["host"]["scheduled_downtime_depth"] >0) 
+			{
+				$downtime=" <strong>[downtimed]</strong>";
+			}
+
 			$hostsout .= sprintf("<TR bgcolor=\"pink\">\n");
-			$hostsout .= sprintf("\t<TD bgcolor=\"lightgrey\">%s</TD> ", $hlist[$hkey]["host"]["host_name"]);
+			$hostsout .= sprintf("\t<TD bgcolor=\"lightgrey\">%s%s</TD> ", $hlist[$hkey]["host"]["host_name"] , $downtime);
 			if($hlist[$hkey]["host"]["status"] == "BLOCK") {
-				$hostsout .= sprintf("<TD BGCOLOR=\"orange\">%s</TD>", $hlist[$hkey]["host"]["status"]);
+				$hostsout .= sprintf("<TD BGCOLOR=\"orange\">%s%s</TD>", $hlist[$hkey]["host"]["status"], $downtime);
 			} else if($hlist[$hkey]["host"]["problem_has_been_acknowledged"] == "1") {
-				$hostsout .= sprintf("<TD BGCOLOR=\"lightgrey\" align=\"center\"><font color=\"red\" size=\"-1\">%s (a)</font></TD>", $hlist[$hkey]["host"]["status"]);			
+				$hostsout .= sprintf("<TD BGCOLOR=\"lightgrey\" align=\"center\"><font color=\"red\" size=\"-1\">%s (a)%s</font></TD>", $hlist[$hkey]["host"]["status"], $downtime);			
 			} else {
-				$hostsout .= sprintf("<TD BGCOLOR=\"red\" align=\"center\"><font color=\"white\" style=\"text-decoration: blink;\">%s</font></TD>", $hlist[$hkey]["host"]["status"]);
+				$hostsout .= sprintf("<TD BGCOLOR=\"red\" align=\"center\"><font color=\"white\" style=\"text-decoration: blink;\">%s%s</font></TD>", $hlist[$hkey]["host"]["status"], $downtime);
 			}
 			$hostsout .= sprintf("<TD>%s</TD>", $hlist[$hkey]["host"]["duration"]);
 			// if you want to see when the last notificaiton was, uncomment this. 
@@ -124,19 +136,54 @@ require 'inc.php';
 
 		if(is_array($services) && $hlist[$hkey]["host"]["status"] == "UP") {
 			foreach( $services as $service => $svalue) {
+				$downtime="";
+				if ($hlist[$hkey]["host"]["scheduled_downtime_depth"] >0)
+				{
+					$downtime=" <strong>[downtimed host]</strong>";
+				}
+				elseif ($services[$service]["scheduled_downtime_depth"] >0)
+				{
+					$downtime=" <strong>[downtimed service]</strong>";
+				}
 				
-				// Warnings are special cased to make them orange. 
-				if($services[$service]["status"] == "WARNING") {
-					$servicesout_warning .= "<TR bgcolor=\"orange\">\n";
+				//already downtimed, segregate
+				if (($hlist[$hkey]["host"]["scheduled_downtime_depth"] >0) || ($services[$service]["scheduled_downtime_depth"] >0))
+				{
+					$thisalert="dt";
+                                        $servicesout_dt .= "<TR bgcolor=\"lightgrey\" class=\"smallack\">\n"; 
 
+					if(($hlist[$hkey]["host"]["host_name"] != $lasthost) || ($thisalert != $lastalert)) {
+						$servicesout_dt .= sprintf("<TD bgcolor=\"lightgrey\">%s%s</TD>", $hlist[$hkey]["host"]["host_name"], $downtime);
+					} else {
+						$servicesout_dt .= sprintf("<TD bgcolor=\"white\">&nbsp;</TD>");
+					}
+					$servicesout_dt .= sprintf("<TD>%s</TD>", $services[$service]["description"]);
+					
+					if($services[$service]["status"] == "Unknown") {
+					$servicesout_dt .= sprintf("<TD BGCOLOR=\"lightgrey\">%s%s</TD>", $services[$service]["status"], $downtime);
+					} else {
+					$servicesout_dt .= sprintf("<TD BGCOLOR=\"lightgrey\"><font color=\"red\" size=\"-1\">%s (ack)</TD>", $services[$service]["status"]); } 
+
+					# $servicesout_error .= sprintf("<TD>%s</TD>", $services[$service]["last_check"]);
+					#$servicesout_dt .= sprintf("<TD>%s</TD>", $services[$service]["last_state_change"]);
+					$servicesout_dt .= sprintf("<TD>%s</TD>", $services[$service]["duration"]);
+					$servicesout_dt .= sprintf("<TD>%s/%s</TD>", $services[$service]["current_attempt"], $services[$service]["max_attempts"]);
+					#$servicesout_error .= sprintf("<TD><font size=\"2\">%s</font></TD>", $services[$service]["plugin_output"]);
+					$servicesout_dt .= sprintf("</TR>\n");
+					$lastalert="dt";
+					$services_dt++;
+				} // Warnings are special cased to make them orange. 
+				elseif($services[$service]["status"] == "WARNING") {
+					$servicesout_warning .= "<TR bgcolor=\"orange\">\n";
+					
 					if($hlist[$hkey]["host"]["host_name"] == $lasthost && $lastalert == "warning")  {
 						$servicesout_warning .= sprintf("<TD bgcolor=\"white\">&nbsp;</TD>");
 					} else {
-						$servicesout_warning .= sprintf("<TD bgcolor=\"lightgrey\">%s</TD>", 
-                                                                                   $hlist[$hkey]["host"]["host_name"]);
+						$servicesout_warning .= sprintf("<TD bgcolor=\"lightgrey\">%s%s</TD>", 
+                                                                                   $hlist[$hkey]["host"]["host_name"], $downtime);
 					}
 
-					$servicesout_warning .= sprintf("<TD>%s</TD>", $services[$service]["description"]);
+					$servicesout_warning .= sprintf("<TD>%s%s</TD>", $services[$service]["description"],$downtime);
 					$servicesout_warning .= sprintf("<TD BGCOLOR=\"yellow\" align=\"center\">%s</TD>", $services[$service]["status"]);
 					# $servicesout_warning .= sprintf("<TD>%s</TD>", $services[$service]["last_check"]);
 					# $servicesout_warning .= sprintf("<TD>%s</TD>", $services[$service]["last_state_change"]);
@@ -151,7 +198,7 @@ require 'inc.php';
                                         $servicesout_ack .= "<TR bgcolor=\"lightgrey\" class=\"smallack\">\n"; 
 
 					if(($hlist[$hkey]["host"]["host_name"] != $lasthost) || ($thisalert != $lastalert)) {
-						$servicesout_ack .= sprintf("<TD bgcolor=\"lightgrey\">%s</TD>", $hlist[$hkey]["host"]["host_name"]);
+						$servicesout_ack .= sprintf("<TD bgcolor=\"lightgrey\">%s%s</TD>", $hlist[$hkey]["host"]["host_name"], $downtime);
 					} else {
 						$servicesout_ack .= sprintf("<TD bgcolor=\"white\">&nbsp;</TD>");
 					}
@@ -182,7 +229,7 @@ require 'inc.php';
 
 				// Finally, stuff that is actually Critical. 
 					if(($hlist[$hkey]["host"]["host_name"] != $lasthost) || ($thisalert != $lastalert))  {
-						$servicesout_error .= sprintf("<TD bgcolor=\"lightgrey\">%s</TD>", $hlist[$hkey]["host"]["host_name"]);
+						$servicesout_error .= sprintf("<TD bgcolor=\"lightgrey\">%s%s</TD>", $hlist[$hkey]["host"]["host_name"], $downtime);
 					} else {
 						$servicesout_error .= sprintf("<TD bgcolor=\"white\">&nbsp;</TD>");
 					}
@@ -263,6 +310,11 @@ if(count ($listofacked) > 0) {
 	$ackedout .= "</td></tr>";
 }
 
+if(count ($listofacked) > 0) {
+	$ackedout = "<tr bgcolor=\"lightgrey\"><td colspan=\"4\"><b>Acknowledged:</b>";
+	$ackedout .= implode(", ", $listofacked);
+	$ackedout .= "</td></tr>";
+}
 
 if(strlen($hostsout)) {
 	echo "<TR bgcolor=\"lightgrey\">\n";
@@ -322,6 +374,20 @@ if(strlen($servicesout_ack)) {
 	echo "\t<TH>Host</TH><TH>Service</TH><TH>Status</TH><TH>Duration</TH><TH><font size=\"1\">A</font></TH>\n";
 	echo "</TR>\n";
 	echo $servicesout_ack;
+	echo "</TABLE>\n";
+}
+
+// Downtimed services get a seperate line to save space
+if(strlen($servicesout_dt)) {
+
+        echo "<TABLE BORDER=0 width=99%>";
+        echo "<tr><td align=left><b>Downtimed Services</b><font size=2> &nbsp;&nbsp;</td> <td align=right><b>";
+        echo "<FONT COLOR=\"darkgrey\">$services_dt Downtimed</FONT> ";
+	echo "</b></td></TABLE>\n";
+	echo "<TABLE BORDER=0 cellspacing=2 width=98%><TR bgcolor=\"lightgrey\" class=\"smallack\">\n";
+	echo "\t<TH>Host</TH><TH>Service</TH><TH>Status</TH><TH>Duration</TH><TH><font size=\"1\">A</font></TH>\n";
+	echo "</TR>\n";
+	echo $servicesout_dt;
 	echo "</TABLE>\n";
 }
 
